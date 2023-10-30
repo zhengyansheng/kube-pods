@@ -31,9 +31,9 @@ func main() {
 		klog.Fatal(err)
 	}
 
-	f := factory.NewInformerFactory(clientSet, defaultResync)
 	for _, gvr := range initGvr() {
 		go func(gvr schema.GroupVersionResource) {
+			f := factory.NewInformerFactory(clientSet, defaultResync)
 			klog.Infof("start gvr: %s", gvr.String())
 			f.Run(gvr, stopCh)
 		}(gvr)

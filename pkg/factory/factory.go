@@ -3,6 +3,7 @@ package factory
 import (
 	"time"
 
+	"github.com/zhengyansheng/kube-pods/pkg/models"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -44,18 +45,25 @@ func (f *informerFactory) Run(gvr schema.GroupVersionResource, stopCh chan struc
 		klog.Error(err)
 	}
 
-	//f.indexer = genericInformer.Informer().GetStore()
-	f.indexer = genericInformer.Informer().GetIndexer()
-
 	// 3. start factory (lw)
 	factory.Start(stopCh)
 
 	// 4. wait all cache sync
 	factory.WaitForCacheSync(stopCh)
 
-	// 5. add event handler
-	//cache.Store()
-	//f.indexer = genericInformer.Informer().GetIndexer()
+	// 5. 初始化indexer
+	f.indexer = genericInformer.Informer().GetIndexer()
+
+	// 6. add event handler
+	f.addEventHandler(genericInformer)
+
+	// 7. pop key from queue
+	for i := 0; i < f.workers; i++ {
+		go wait.Until(f.runWorker, time.Second, stopCh)
+	}
+}
+
+func (f *informerFactory) addEventHandler(genericInformer informers.GenericInformer) {
 	genericInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			// obj 是一个pod对象，这里的key是namespace/name
@@ -77,16 +85,10 @@ func (f *informerFactory) Run(gvr schema.GroupVersionResource, stopCh chan struc
 			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 			if err == nil {
 				// 将key放入队列
-				klog.Infof("delete key: %s", key)
 				f.queue.Add(key)
 			}
 		},
 	})
-
-	// 6. pop key from queue
-	for i := 0; i < f.workers; i++ {
-		go wait.Until(f.runWorker, time.Second, stopCh)
-	}
 }
 
 func (f *informerFactory) runWorker() {
@@ -131,7 +133,9 @@ func (f *informerFactory) syncToStdout(key string) error {
 	switch obj.(type) {
 	case *v1.Pod:
 		p := obj.(*v1.Pod)
-		klog.Infof("Add/Update %v/%v", p.GetNamespace(), p.GetName())
+		pod := models.NewPod(p)
+		pod.Notify()
+		//klog.Infof("Add/Update %v/%v", p.GetNamespace(), p.GetName())
 	case *v1.Node:
 		p := obj.(*v1.Node)
 		klog.Infof("Add/Update %v/%v", p.GetNamespace(), p.GetName())

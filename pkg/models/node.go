@@ -8,3 +8,7 @@ type Node struct {
 	InternalIP string `json:"internal_ip"`
 	Capacity   string `json:"capacity"`
 }
+
+func (n *Node) Notify() error {
+	return nil
+}
